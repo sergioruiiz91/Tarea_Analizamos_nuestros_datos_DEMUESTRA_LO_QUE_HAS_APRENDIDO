@@ -376,7 +376,7 @@ El alumno más joven tiene aproximadamente 18.12 años.
 ```{r}
 unique(datos_2026$Hwork)
 alumnos_trabajo_estudios <- datos_2026 %>%
-  filter(Hwork) %>%
+  filter(!is.na(Hwork) & as.numeric(Hwork) > 0) %>%
   nrow()
 alumnos_trabajo_estudios
 ```
@@ -388,7 +388,7 @@ Simultan trabajo y estudios 14 alumnos.
 unique(datos_2026$Smoke)
 
 datos_fumadores <- datos_2026 %>%
-  filter(Smoke == "S ") %>%
+  filter(Smoke == "Sí") %>%
   group_by(Sex) %>%
   summarise(num_fumadores = n())
 datos_fumadores
