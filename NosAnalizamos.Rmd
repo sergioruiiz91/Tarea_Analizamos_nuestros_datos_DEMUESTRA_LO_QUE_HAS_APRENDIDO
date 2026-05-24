@@ -1,0 +1,446 @@
+---
+title: "NosAnalizamos"
+author: "Tu Nombre"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+  pdf_document:
+    toc: true
+    number_sections: true
+---
+
+# Instalacion y carga de librerias
+
+```{r setup, include=FALSE}
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+
+if (!require("pacman")) {
+  install.packages("pacman")
+}
+
+pacman::p_load(
+  readr, dplyr, tidyr, ggplot2, GGally, lubridate, knitr, stringr
+)
+```
+
+# Carga de datos
+
+Carga el fichero de datos en R y llama `datos` al data frame obtenido. Este data frame contiene solo las columnas con variables y las filas con datos. La fila de cabecera se detecta de forma automatica y por eso el mismo codigo sirve para 2022 y 2026 sin cambios.
+
+```{r}
+find_header_row <- function(path, header = "FechaNac(DD-MM-YYY)") {
+  lines <- read_lines(path, n_max = 200)
+  header_row <- which(str_detect(lines, fixed(header)))[1]
+  if (is.na(header_row)) {
+    stop("No se encontro la fila de cabecera")
+  }
+  header_row
+}
+
+cargar_datos <- function(path) {
+  header_row <- find_header_row(path)
+  datos <- read_delim(
+    path,
+    skip = header_row - 1,
+    delim = "\t",
+    trim_ws = TRUE,
+    show_col_types = FALSE
+  )
+  datos <- datos %>% filter(!is.na(Id) & Id != "")
+  datos
+}
+
+to_numeric <- function(x) {
+  x <- str_trim(as.character(x))
+  x <- str_replace_all(x, ",", ".")
+  x[x == ""] <- NA_character_
+  as.numeric(x)
+}
+
+limpiar_nota <- function(x) {
+  x <- str_trim(as.character(x))
+  x <- str_replace_all(x, ",", ".")
+  x <- ifelse(str_to_upper(x) == "NC", "3", x)
+  valido <- str_detect(x, "^\\d+(\\.\\d+)?$")
+  x[!valido] <- NA_character_
+  as.numeric(x)
+}
+
+limpiar_notas <- function(df, asignaturas) {
+  df %>% mutate(across(all_of(asignaturas), limpiar_nota))
+}
+
+normalizar_sexo <- function(x) {
+  x <- str_to_lower(str_trim(as.character(x)))
+  x <- case_when(
+    x %in% c("m", "masculino", "hombre") ~ "M",
+    x %in% c("f", "femenino", "mujer") ~ "F",
+    TRUE ~ NA_character_
+  )
+  factor(x, levels = c("F", "M"), ordered = TRUE)
+}
+
+normalizar_mano <- function(x) {
+  x <- str_to_lower(str_trim(as.character(x)))
+  x <- case_when(
+    x %in% c("derecha", "der", "right") ~ "Derecha",
+    x %in% c("izquierda", "izq", "left") ~ "Izquierda",
+    TRUE ~ NA_character_
+  )
+  factor(x, levels = c("Derecha", "Izquierda"), ordered = TRUE)
+}
+
+normalizar_fuma <- function(x) {
+  x <- str_to_lower(str_trim(as.character(x)))
+  x <- iconv(x, to = "ASCII//TRANSLIT")
+  x <- case_when(
+    x %in% c("si", "s") ~ "Si",
+    x %in% c("no", "n") ~ "No",
+    TRUE ~ NA_character_
+  )
+  factor(x, levels = c("No", "Si"), ordered = TRUE)
+}
+
+limpiar_personales <- function(df) {
+  if ("Sex" %in% names(df)) {
+    df$Sex <- normalizar_sexo(df$Sex)
+  }
+  if ("NW.Hnd" %in% names(df)) {
+    df$NW.Hnd <- normalizar_mano(df$NW.Hnd)
+  }
+  if ("Smoke" %in% names(df)) {
+    df$Smoke <- normalizar_fuma(df$Smoke)
+  }
+  if ("Wr.Hnd" %in% names(df)) {
+    df$Wr.Hnd <- to_numeric(df$Wr.Hnd)
+  }
+  if ("Height" %in% names(df)) {
+    df$Height <- to_numeric(df$Height)
+  }
+  if ("Pulse" %in% names(df)) {
+    df$Pulse <- to_numeric(df$Pulse)
+  }
+  if ("Hwork" %in% names(df)) {
+    df$Hwork <- to_numeric(df$Hwork)
+  }
+  if ("HSt" %in% names(df)) {
+    df$HSt <- to_numeric(df$HSt)
+  }
+  if ("Age" %in% names(df)) {
+    df$Age <- to_numeric(df$Age)
+  }
+  if ("FechaNac(DD-MM-YYY)" %in% names(df)) {
+    df$FechaNac <- dmy(df[["FechaNac(DD-MM-YYY)"]], quiet = TRUE)
+  }
+  df
+}
+
+preparar_datos <- function(path, asignaturas) {
+  datos <- cargar_datos(path)
+  datos <- datos %>% filter(Id != "martsobm")
+  datos <- limpiar_personales(datos)
+  datos <- limpiar_notas(datos, asignaturas)
+  datos
+}
+
+tabla_estadisticos <- function(datos, asignaturas) {
+  datos %>%
+    summarise(across(all_of(asignaturas), list(
+      min = ~ min(., na.rm = TRUE),
+      p25 = ~ quantile(., 0.25, na.rm = TRUE),
+      mediana = ~ median(., na.rm = TRUE),
+      media = ~ mean(., na.rm = TRUE),
+      sd = ~ sd(., na.rm = TRUE),
+      p75 = ~ quantile(., 0.75, na.rm = TRUE),
+      max = ~ max(., na.rm = TRUE)
+    ))) %>%
+    pivot_longer(cols = everything(), names_to = "nombre", values_to = "valor") %>%
+    separate(nombre, into = c("asignatura", "stat"), sep = "_") %>%
+    pivot_wider(names_from = stat, values_from = valor) %>%
+    select(asignatura, min, p25, mediana, media, sd, p75, max) %>%
+    mutate(across(-asignatura, ~ round(., 2)))
+}
+
+max_correlaciones <- function(mat) {
+  mat[lower.tri(mat, diag = TRUE)] <- NA
+  max_abs <- max(abs(mat), na.rm = TRUE)
+  idx <- which(abs(mat) == max_abs, arr.ind = TRUE)
+  tibble(
+    var1 = rownames(mat)[idx[, 1]],
+    var2 = colnames(mat)[idx[, 2]],
+    correlacion = mat[idx]
+  )
+}
+
+asignaturas <- c("ALG", "ANM", "FP", "DCS", "MD")
+path_2022 <- "data/NosAutoanalizamos2022 - Hoja1.tsv"
+datos <- preparar_datos(path_2022, asignaturas)
+```
+
+# Eliminar usuario martsobm
+
+Elimina al usuario cuyo id es `martsobm` del conjunto de datos.
+
+```{r}
+datos <- datos %>% filter(Id != "martsobm")
+datos %>% filter(Id == "martsobm")
+```
+
+# Seleccion y limpieza de calificaciones
+
+Selecciona las columnas con las calificaciones y adécualas para que, al transformar a tipo numerico, los valores sean correctos (separador decimal con punto). Si alguna calificacion es `NC` se sustituye por `3`. Cualquier otro valor no reconocible se sustituye por `NA`.
+
+```{r}
+notas <- datos %>% select(all_of(asignaturas))
+save(notas, file = "Notas.Rdata")
+```
+
+# Tabla de estadisticos
+
+Obtén una tabla de estadisticos de estas variables, donde en la primera columna aparezca cada asignatura y las siguientes columnas se correspondan con: valor minimo, percentil 25, mediana, valor medio, desviacion tipica, percentil 75, valor maximo. Resultados con 2 decimales.
+
+```{r}
+stats_table <- tabla_estadisticos(datos, asignaturas)
+knitr::kable(stats_table)
+```
+
+# ggpairs: relaciones entre variables
+
+Usa `ggpairs` de la libreria `GGally` y representa las relaciones entre las calificaciones.
+
+```{r}
+GGally::ggpairs(datos %>% select(all_of(asignaturas)))
+```
+
+# Matrices de correlacion y covarianza
+
+Determina las matrices de correlacion y covarianza de las calificaciones con las opciones "Spearman" y "Pearson", e indica que pares de variables tienen la correlacion mas alta.
+
+```{r}
+datos_notas <- datos %>% select(all_of(asignaturas))
+
+cor_pearson <- cor(datos_notas, method = "pearson", use = "pairwise.complete.obs")
+cor_spearman <- cor(datos_notas, method = "spearman", use = "pairwise.complete.obs")
+cov_matrix <- cov(datos_notas, use = "pairwise.complete.obs")
+
+max_pearson <- max_correlaciones(cor_pearson)
+max_spearman <- max_correlaciones(cor_spearman)
+
+cor_pearson
+cor_spearman
+cov_matrix
+max_pearson
+max_spearman
+```
+
+# Boxplots de calificaciones
+
+Representa en una misma grafica los boxplots con las calificaciones obtenidas en las diferentes asignaturas.
+
+```{r}
+notas_long <- datos %>%
+  select(all_of(asignaturas)) %>%
+  pivot_longer(cols = everything(), names_to = "asignatura", values_to = "nota")
+
+ggplot(notas_long, aes(x = asignatura, y = nota, fill = asignatura)) +
+  geom_boxplot() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Boxplots de calificaciones", x = "Asignatura", y = "Nota")
+```
+
+# Boxplots por sexo
+
+Anade la variable sexo al conjunto de datos y realiza la representacion del boxplot de calificaciones por asignatura coloreando segun dicha variable.
+
+```{r}
+datos <- datos %>% mutate(sexo = Sex)
+
+notas_sexo_long <- datos %>%
+  select(sexo, all_of(asignaturas)) %>%
+  pivot_longer(cols = all_of(asignaturas), names_to = "asignatura", values_to = "nota")
+
+ggplot(notas_sexo_long, aes(x = asignatura, y = nota, fill = sexo)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Boxplots por sexo", x = "Asignatura", y = "Nota", fill = "Sexo")
+```
+
+# Alumnos con calificaciones en todas las asignaturas
+
+Selecciona los alumnos que tengan calificaciones en todas las asignaturas y representalas graficamente. En el eje X aparece el usuario (girado 90 grados) y en el eje Y la calificacion numerica con un color distinto para cada asignatura. Se muestra un diagrama de lineas y un punto por asignatura y alumno.
+
+```{r}
+datos_completos <- datos %>%
+  filter(if_all(all_of(asignaturas), ~ !is.na(.x))) %>%
+  select(Id, all_of(asignaturas))
+
+datos_long <- datos_completos %>%
+  pivot_longer(cols = -Id, names_to = "asignatura", values_to = "nota")
+
+ggplot(datos_long, aes(x = Id, y = nota, color = asignatura, group = asignatura)) +
+  geom_line() +
+  geom_point(size = 2) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+  labs(
+    title = "Calificaciones por alumno y asignatura",
+    x = "Alumno",
+    y = "Calificacion",
+    color = "Asignatura"
+  )
+```
+
+# Comparacion 2022 vs 2026
+
+Sin modificar el codigo, se usa el fichero de 2026 y se comparan los resultados con 2022.
+
+```{r}
+path_2026 <- "data/NosAutoanalizamos2026 - NosAutoanalizamos (1).tsv"
+datos_2026 <- preparar_datos(path_2026, asignaturas)
+
+stats_2026 <- tabla_estadisticos(datos_2026, asignaturas)
+stats_2026
+
+comparacion_medias <- tibble(
+  asignatura = asignaturas,
+  media_2022 = sapply(datos[asignaturas], mean, na.rm = TRUE),
+  media_2026 = sapply(datos_2026[asignaturas], mean, na.rm = TRUE)
+) %>%
+  mutate(diferencia = round(media_2026 - media_2022, 2))
+
+knitr::kable(comparacion_medias)
+```
+
+# Preguntas con datos 2026
+
+Responde a las preguntas usando datos 2026. Se corrigen valores invalidos: si no son M o F en `Sex`, o no son Derecha/Izquierda en `NW.Hnd`, se reemplazan por `NA`. Lo mismo para `Smoke`.
+
+```{r}
+fecha_referencia <- ymd("2026-02-01")
+datos_2026 <- datos_2026 %>%
+  mutate(Edad_a_01_02_2026 = as.numeric(difftime(fecha_referencia, FechaNac, units = "days")) / 365.25)
+```
+
+## Alumno mas joven a 01/02/2026
+
+```{r}
+edad_mas_joven <- min(datos_2026$Edad_a_01_02_2026, na.rm = TRUE)
+round(edad_mas_joven, 2)
+```
+
+## Alumnos que simultanean trabajo y estudios
+
+```{r}
+alumnos_trabajo_estudios <- datos_2026 %>%
+  filter(!is.na(Hwork) & Hwork > 0) %>%
+  nrow()
+alumnos_trabajo_estudios
+```
+
+## Fumadores por sexo
+
+```{r}
+datos_fumadores <- datos_2026 %>%
+  filter(Smoke == "Si") %>%
+  count(Sex, name = "num_fumadores")
+datos_fumadores
+```
+
+## Media y varianza de Wr.Hnd segun sexo
+
+```{r}
+datos_wr_hnd <- datos_2026 %>%
+  group_by(Sex) %>%
+  summarise(
+    media_wr_hnd = mean(Wr.Hnd, na.rm = TRUE),
+    varianza_wr_hnd = var(Wr.Hnd, na.rm = TRUE)
+  )
+knitr::kable(datos_wr_hnd)
+```
+
+## Relacion entre sexo y mano con la que se escribe (NW.Hnd)
+
+```{r}
+tabla_sexo_mano <- table(datos_2026$Sex, datos_2026$NW.Hnd, useNA = "no")
+tabla_sexo_mano
+
+chisq_test <- chisq.test(tabla_sexo_mano, correct = FALSE)
+chisq_test$p.value
+```
+
+## Relacion lineal entre Height y Wr.Hnd
+
+```{r}
+ggplot(datos_2026, aes(x = Height, y = Wr.Hnd)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(title = "Relacion entre Height y Wr.Hnd", x = "Height", y = "Wr.Hnd") +
+  theme_minimal()
+
+cor_pearson_height_wr_hnd <- cor(datos_2026$Height, datos_2026$Wr.Hnd, method = "pearson", use = "complete.obs")
+cor_spearman_height_wr_hnd <- cor(datos_2026$Height, datos_2026$Wr.Hnd, method = "spearman", use = "complete.obs")
+cor_pearson_height_wr_hnd
+cor_spearman_height_wr_hnd
+```
+
+## Outliers en altura (identificador de Hampel)
+
+```{r}
+madm <- function(x, na.rm = TRUE) {
+  med <- median(x, na.rm = na.rm)
+  1.4826 * median(abs(x - med), na.rm = na.rm)
+}
+
+regla_hampel <- function(x) {
+  med <- median(x, na.rm = TRUE)
+  m <- madm(x, na.rm = TRUE)
+  x < (med - 3 * m) | x > (med + 3 * m)
+}
+
+datos_2026 <- datos_2026 %>%
+  mutate(outlier_height = regla_hampel(Height))
+
+outliers_height <- datos_2026 %>%
+  filter(outlier_height) %>%
+  select(Id, Height)
+
+outliers_height
+```
+
+## Imputacion generalizada de FP con la media
+
+```{r}
+media_fp <- mean(datos_2026$FP, na.rm = TRUE)
+media_fp
+```
+
+## Imputacion de FP segun PulseCat
+
+```{r}
+datos_2026 <- datos_2026 %>%
+  mutate(PulseCat = ifelse(Pulse >= 65, "PulseH", "PulseL"))
+
+media_fp_pulse <- datos_2026 %>%
+  group_by(PulseCat) %>%
+  summarise(media_fp = mean(FP, na.rm = TRUE))
+
+media_fp_pulse
+```
+
+## Relacion entre Pulse y calificaciones en ALG
+
+```{r}
+ggplot(datos_2026, aes(x = Pulse, y = ALG)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(title = "Relacion entre Pulse y ALG", x = "Pulse", y = "ALG") +
+  theme_minimal()
+
+cor_pearson_pulse_alg <- cor(datos_2026$Pulse, datos_2026$ALG, method = "pearson", use = "complete.obs")
+cor_spearman_pulse_alg <- cor(datos_2026$Pulse, datos_2026$ALG, method = "spearman", use = "complete.obs")
+cor_pearson_pulse_alg
+cor_spearman_pulse_alg
+```
