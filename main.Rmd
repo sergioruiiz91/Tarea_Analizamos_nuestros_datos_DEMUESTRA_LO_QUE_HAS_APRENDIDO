@@ -15,67 +15,395 @@ output:
 # Instalación y carga de librerías
 
 Asegúrate de que se instalan las librerías necesarias en caso de que no estén instaladas en el ordenador en el que se ejecuta el proyecto. Usa `pacman`.
+```{r eval=FALSE}
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+
+paquetes_pracma <- c(
+  "knitr", "readr", "readxl", "haven", "jsonlite", "hms",
+  "lubridate", "tidyr", "dplyr", "magrittr", "ggplot2",
+  "RColorBrewer", "tidyverse", "dbplyr", "nycflights13",
+  "car", "GGally", "writexl", "anytime"
+)
+
+paquetes_pracma <- sort(unique(paquetes_pracma))
+faltan <- setdiff(paquetes_pracma, rownames(installed.packages()))
+if (length(faltan) > 0) install.packages(faltan, dependencies = TRUE)
+invisible(sapply(paquetes_pracma, require, character.only = TRUE))
+```
 
 # Carga de datos
 
 Carga el fichero de datos en R y llama `datos` al data frame obtenido. Este data frame contendrá exclusivamente las columnas con variables y las filas que contengan datos. Se sabe que los datos empiezan en la fila 25, pero **no** se sabe cuántos alumnos puede haber, por lo que la selección de filas con datos debe ser **automática**.
-
+```{r}
+path <- "data/NosAutoanalizamos2022 - Hoja1.tsv"
+datos <- read_delim(path, trim_ws = TRUE, show_col_types = FALSE, skip = 25, delim = "\t")
+head(datos)
+names_and_types <- as.data.frame(colnames(datos)) %>%
+  mutate(col_type = sapply(colnames(datos), class), ) %>%
+  kable()
+names_and_types
+```  
 # Eliminar usuario martsobm
 
 Elimina al usuario cuyo id es `martsobm` del conjunto de datos.
-
+```{r}
+datos %>% filter(Id == "martsobm")
+# Quitamos
+datos <- datos %>% filter(Id != "martsobm")
+datos %>% filter(Id == "martsobm")
+```
 # Selección y limpieza de calificaciones
 
 Selecciona las columnas con las calificaciones y adécualas para que, al transformar a tipo numérico, los valores sean correctos (recuerda que el separador decimal es el punto). Si alguna calificación es `NC` se sustituirá por `3`. Cualquier otro valor no reconocible se sustituirá por `NA` (por ejemplo, `"6 y pico"` no es un valor conocido).
 
+```{r}
+asignaturas <- c("ALG", "ANM", "FP", "DCS", "MD")
+datos[, asignaturas] <- datos[, asignaturas] %>% mutate(across(everything(), function(x) gsub(",", ".", x)))
+datos[, asignaturas] <- datos[, asignaturas] %>% mutate(across(everything(), function(x) gsub("NC", "3", x, ignore.case = TRUE)))
+datos[, asignaturas] <- datos[, asignaturas] %>% mutate(across(everything(), function(x) as.numeric(x)))
+``` 
+
 # Tabla de estadísticos
 
 Obtén una tabla de estadísticos de estas variables, donde en la primera columna aparezca cada una de las asignaturas y las siguientes columnas se correspondan con los estadísticos indicados, en este orden: valor mínimo, percentil 25, mediana, valor medio, desviación típica, percentil 75, valor máximo. Los resultados se mostrarán con **2 decimales**.
+```{r}
+stats_num <- datos[, asignaturas] %>%
+  summarise(across(everything(), list(
+    max = ~ max(., na.rm = TRUE),
+    min = ~ min(., na.rm = TRUE),
+    mean = ~ mean(., na.rm = TRUE),
+    sd = ~ sd(., na.rm = TRUE),
+    median = ~ median(., na.rm = TRUE),
+    IQR = ~ IQR(., na.rm = TRUE),
+    percentil25 = ~ IQR(., 0.25, na.rm = TRUE),
+    percentil75 = ~ IQR(., 0.75, na.rm = TRUE)
+  ))) %>%
+  pivot_longer(cols = everything(), names_to = "nombre", values_to = "valor") %>%
+  separate(nombre, into = c("asignatura", "stat"), sep = "_") %>%
+  pivot_wider(names_from = stat, values_from = valor) %>%
+  mutate(across(c(mean, sd, median, IQR), ~ round(., 2))) %>%
+  unite("mean±sd", mean, sd, sep = "±")
 
+stats_num
+```
 # ggpairs: relaciones entre variables
 
 Usa la función `ggpairs` de la librería `GGally` y representa las relaciones entre todas las variables.
-
+```{r} 
+ggpairs(datos %>% select(where(is.numeric)))
+```
 # Matrices de correlación y covarianza
 
 Determina las matrices de correlación y covarianza de dichas variables con las opciones `"Spearman"` y `"Pearson"`, e indica qué pares de variables tienen la correlación más alta.
+```{r} 
+# Nos aseguramos de que las columnas son numéricas
+datos_num <- datos %>% select(where(is.numeric))
+# ── Matrices de correlación ──────────────────────────────
+cor_pearson <- cor(datos_num, method = "pearson", use = "complete.obs")
+cor_spearman <- cor(datos_num, method = "spearman", use = "complete.obs")
 
+# ── Matriz de covarianza (solo tiene sentido con Pearson) ─
+cov_matrix <- cov(datos_num, use = "complete.obs")
+
+# ── Ver resultados ───────────────────────────────────────
+print(cor_pearson)
+print(cor_spearman)
+print(cov_matrix)
+```
 # Boxplots de calificaciones
 
 Representa en una misma gráfica los boxplots con las calificaciones obtenidas en las diferentes asignaturas.
-
+```{r} 
+asignaturas_para_plot <- datos[, asignaturas] %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "asignatura",
+    values_to = "nota",
+    values_drop_na = TRUE
+  )
+asignaturas_para_plot
+p <- ggplot(asignaturas_para_plot, aes(x = asignatura, y = nota, fill = asignatura)) +
+  geom_boxplot() + # cambia por geom_violin() si piden violín
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Titulo", x = "Categoria", y = "Valor")
+p
+```
 # Boxplots por sexo
 
 Añade la variable `sexo` al conjunto de datos y realiza la representación del boxplot de calificaciones por asignatura coloreando según dicha variable.
-
+```{r}
+asignaturas_sex <- c("ALG", "ANM", "FP", "DCS", "MD", "Sex")
+asignaturas_para_plot <- datos[, asignaturas_sex] %>%
+  pivot_longer(
+    cols = all_of(asignaturas),
+    names_to = "asignatura",
+    values_to = "nota",
+    values_drop_na = TRUE
+  )
+sort(unique(datos$Sex))
+datos$Sex <- factor(
+  datos$Sex,
+  levels = sort(unique(datos$Sex)),
+  ordered = TRUE
+)
+p <- ggplot(asignaturas_para_plot, aes(x = asignatura, y = nota, fill = Sex, colour = Sex)) +
+  geom_boxplot() + # cambia por geom_violin() si piden violín
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Titulo", x = "Nota", y = "Valor", fill = "Sexo", colour = "Sexo")
+p
+``` 
 # Alumnos con calificaciones en todas las asignaturas
 
 Selecciona los alumnos que tengan calificaciones en **todas** las asignaturas y represéntalas gráficamente. En el eje X aparecerá el usuario del alumno (girado 90°) y en el eje Y la calificación numérica, con un color distinto para cada asignatura. Se mostrará un diagrama de líneas que una las calificaciones de una misma asignatura para todos los alumnos, así como un punto por asignatura (del mismo color que las líneas) para cada asignatura y alumno.
+```{r}
+asignaturas_id <- c("ALG", "ANM", "FP", "DCS", "MD", "Id")
 
+# Alumnos con calificaciones en TODAS las asignaturas
+datos_completos <- datos %>%
+  filter(if_all(all_of(asignaturas_id), ~ !is.na(.x))) %>%
+  select(all_of(asignaturas_id))
+# datos_completos
+# Formato largo para ggplot
+datos_long <- datos_completos %>%
+  pivot_longer(
+    cols      = -Id,
+    names_to  = "asignatura",
+    values_to = "nota"
+  )
+# Plot
+ggplot(datos_long, aes(x = Id, y = nota, color = asignatura, group = asignatura)) +
+  geom_line() +
+  geom_point(size = 2) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)
+  ) +
+  labs(
+    title = "Calificaciones por alumno y asignatura",
+    x     = "Alumno",
+    y     = "Calificación",
+    color = "Asignatura"
+  )
+```
 # Comparación 2022 vs 2026
 
 Sin hacer ninguna modificación en el código, utiliza el fichero correspondiente al año 2026 y compara los resultados con los del curso 2022.
 
+```{r}
+path_2026 <- "data/NosAutoanalizamos2026 - NosAutoanalizamos (1).tsv"
+datos_2026 <- read_delim(path_2026, trim_ws = TRUE, show_col_types = FALSE, skip = 27, delim = "\t")
+```
+
+```{r}
+names_and_types_2026 <- as.data.frame(colnames(datos_2026)) %>%
+  mutate(col_type = sapply(colnames(datos_2026), class)) %>%
+  kable()
+names_and_types_2026
+```
+
+```{r}
+datos_2026 <- datos_2026 %>% filter(Id != "martsobm")
+```
+
+```{r}
+datos_2026[, asignaturas] <- datos_2026[, asignaturas] %>%
+  mutate(across(everything(), function(x) gsub(",", ".", x)))
+
+datos_2026[, asignaturas] <- datos_2026[, asignaturas] %>%
+  mutate(across(everything(), function(x) gsub("NC", "3", x, ignore.case = TRUE)))
+
+datos_2026[, asignaturas] <- datos_2026[, asignaturas] %>%
+  mutate(across(everything(), function(x) as.numeric(x)))
+```
+
+```{r}
+stats_num_2026 <- datos_2026[, asignaturas] %>%
+  summarise(across(everything(), list(
+    max         = ~ max(., na.rm = TRUE),
+    min         = ~ min(., na.rm = TRUE),
+    mean        = ~ mean(., na.rm = TRUE),
+    sd          = ~ sd(., na.rm = TRUE),
+    median      = ~ median(., na.rm = TRUE),
+    IQR         = ~ IQR(., na.rm = TRUE),
+    percentil25 = ~ IQR(., 0.25, na.rm = TRUE),
+    percentil75 = ~ IQR(., 0.75, na.rm = TRUE)
+  ))) %>%
+  pivot_longer(cols = everything(), names_to = "nombre", values_to = "valor") %>%
+  separate(nombre, into = c("asignatura", "stat"), sep = "_") %>%
+  pivot_wider(names_from = stat, values_from = valor) %>%
+  mutate(across(c(mean, sd, median, IQR), ~ round(., 2))) %>%
+  unite("mean±sd", mean, sd, sep = "±")
+
+stats_num_2026
+```
+
+```{r}
+datos_num_2026 <- datos_2026 %>% select(where(is.numeric))
+
+cor_pearson_2026 <- cor(datos_num_2026, method = "pearson", use = "complete.obs")
+cor_spearman_2026 <- cor(datos_num_2026, method = "spearman", use = "complete.obs")
+cov_matrix_2026 <- cov(datos_num_2026, use = "complete.obs")
+
+print(cor_pearson_2026)
+print(cor_spearman_2026)
+print(cov_matrix_2026)
+```
+
+```{r}
+asignaturas_para_plot_2026 <- datos_2026[, asignaturas] %>%
+  pivot_longer(
+    cols           = everything(),
+    names_to       = "asignatura",
+    values_to      = "nota",
+    values_drop_na = TRUE
+  )
+
+p_2026 <- ggplot(asignaturas_para_plot_2026, aes(x = asignatura, y = nota, fill = asignatura)) +
+  geom_boxplot() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Titulo", x = "Categoria", y = "Valor")
+p_2026
+```
+
+```{r}
+asignaturas_sex_2026 <- datos_2026[, asignaturas_sex] %>%
+  pivot_longer(
+    cols           = all_of(asignaturas),
+    names_to       = "asignatura",
+    values_to      = "nota",
+    values_drop_na = TRUE
+  )
+
+sort(unique(datos_2026$Sex))
+
+datos_2026$Sex <- factor(
+  datos_2026$Sex,
+  levels = sort(unique(datos_2026$Sex)),
+  ordered = TRUE
+)
+
+p_2026 <- ggplot(asignaturas_sex_2026, aes(x = asignatura, y = nota, fill = Sex, colour = Sex)) +
+  geom_boxplot() +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Titulo", x = "Nota", y = "Valor", fill = "Sexo", colour = "Sexo")
+p_2026
+```
+
+```{r}
+datos_completos_2026 <- datos_2026 %>%
+  filter(if_all(all_of(asignaturas_id), ~ !is.na(.x))) %>%
+  select(all_of(asignaturas_id))
+
+datos_long_2026 <- datos_completos_2026 %>%
+  pivot_longer(
+    cols      = -Id,
+    names_to  = "asignatura",
+    values_to = "nota"
+  )
+
+ggplot(datos_long_2026, aes(x = Id, y = nota, color = asignatura, group = asignatura)) +
+  geom_line() +
+  geom_point(size = 2) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+  labs(
+    title = "Calificaciones por alumno y asignatura",
+    x     = "Alumno",
+    y     = "Calificación",
+    color = "Asignatura"
+  )
+```
+
 # Preguntas con datos 2026
-
 Responde a las siguientes preguntas utilizando los datos del curso 2026. Ten en cuenta que deberás hacer correcciones en los datos en aquellos casos en los que los valores introducidos contengan errores (por ejemplo, si los valores posibles para el sexo de nacimiento son `M` y `F`, cualquier otro valor deberá ser corregido; si la corrección no es posible, sustituye por `NA`). Debes justificar todas las cuestiones con los datos disponibles.
+```{r} 
+# Corrección de datos erróneos en la variable sexo
+unique(datos_2026$Sex)
 
+# > unique(datos_2026$Sex )
+# [1] "M"    "F"    "Exer"
+# Miramos el Exer
+# Quitamos el Exer
+datos_2026 <- datos_2026 %>% filter(Sex != "Exer")
+# El sexo esta normalizado a M y F, lo convertimos a factor con etiquetas
+datos_2026$Sex <- factor(datos_2026$Sex, levels = c("F", "M"), ordered = TRUE)
+# Vemos las variables y sus tipos
+names_and_types_2026
+# Vemos FechaNac(DD-MM-YYY)  y lo pasamos con lubridate a formato fecha
+datos_2026$FechaNac <- dmy(datos_2026[["FechaNac(DD-MM-YYY)"]])
+# pasamos Age a numérico
+datos_2026$Age <- as.numeric(datos_2026$Age)
+# vemos  Wr.Hnd y NW.Hnd
+unique(datos_2026$NW.Hnd)
+# Vemos que hay un valor "derecha" que no es correcto, lo corregimos a "Derecha"
+datos_2026$NW.Hnd <- ifelse(datos_2026$NW.Hnd == "derecha", "Derecha", datos_2026$NW.Hnd)
+# Lo cambioamos a factor con etiquetas
+datos_2026$NW.Hnd <- factor(datos_2026$NW.Hnd, levels = c("Derecha", "Izquierda"), ordered = TRUE)
+# Vemos Wr.Hnd y lo pasamos a numérico
+# Cambamos las comas por puntos
+datos_2026$Wr.Hnd <- gsub(",", ".", datos_2026$Wr.Hnd)
+datos_2026$Wr.Hnd <- as.numeric(datos_2026$Wr.Hnd)
+# Vemos todos los valores de Smoke
+unique(datos_2026$Smoke) # [1] "No" "Si" "NO" "no"
+# Cambiamos los valores a "Sí" y "No"
+datos_2026$Smoke <- ifelse(datos_2026$Smoke %in% c("Si", "SI", "si"), "Sí", ifelse(datos_2026$Smoke %in% c("No", "NO", "no"), "No", NA))
+# Height lo pasamos a numérico y corregimos las comas por puntos
+datos_2026$Height <- gsub(",", ".", datos_2026$Height)
+datos_2026$Height <- as.numeric(datos_2026$Height)
+# Vemos los tipos de datos y las variables después de la limpieza
+names_and_types_2026 <- as.data.frame(colnames(datos_2026)) %>%
+  mutate(col_type = sapply(colnames(datos_2026), class)) %>%
+  kable()
+names_and_types_2026
+``` 
 ## Alumno más joven a 01/02/2026
 
 ¿Qué edad, expresada en años con decimales, tiene el alumno más joven a fecha 01/02/2026?
+```{r}
+fecha_referencia <- ymd("2026-02-01")
+datos_2026 <- datos_2026 %>%
+  mutate(Edad_a_01_02_2026 = as.numeric(difftime(fecha_referencia, FechaNac, units = "days")) / 365.25)
+edad_mas_joven <- min(datos_2026$Edad_a_01_02_2026, na.rm = TRUE)
+edad_mas_joven
+```
 
 ## Alumnos que simultanean trabajo y estudios
 
 ¿Cuántos alumnos simultanean trabajo y estudios?
-
+```{r}
+unique(datos_2026$Hwork)
+alumnos_trabajo_estudios <- datos_2026 %>%
+  filter(Hwork) %>%
+  nrow()
+alumnos_trabajo_estudios
+```
 ## Fumadores por sexo
 
 ¿Hay más hombres o más mujeres fumadoras?
+```{r} 
+unique(datos_2026$Smoke)
 
+datos_fumadores <- datos_2026 %>%
+  filter(Smoke == "S ") %>%
+  group_by(Sex) %>%
+  summarise(num_fumadores = n())
+datos_fumadores
+``` 
 ## Media y varianza de Wr.Hnd según sexo
 
 ¿Cuál es el valor medio y la varianza de la variable `Wr.Hnd` según el sexo?
+```{r} 
+unique(datos_2026$Sex)
+datos_wr_hnd <- datos_2026 %>%
+  group_by(Sex) %>%
+  summarise(
+    media_wr_hnd = mean(Wr.Hnd, na.rm = TRUE),
+    varianza_wr_hnd = var(Wr.Hnd, na.rm = TRUE)
+  ) %>%
+  pivot_longer(cols = c(media_wr_hnd, varianza_wr_hnd), names_to = "estadistico", values_to = "valor")
 
+datos_wr_hnd
+```
 ## Relación entre sexo y mano con la que se escribe
 
 ¿Existe relación entre el sexo y la mano con la que se escribe (`NW.Hnd`)?
@@ -83,19 +411,67 @@ Responde a las siguientes preguntas utilizando los datos del curso 2026. Ten en 
 ## Relación lineal entre Height y Wr.Hnd
 
 ¿Existe una relación lineal entre la altura (`Height`) y la distancia del extremo del meñique al extremo del pulgar de la mano con la que se escribe (`Wr.Hnd`)?
-
+```{r}
+ggplot(datos_2026, aes(x = Height, y = Wr.Hnd)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(title = "Relación entre Height y Wr.Hnd", x = "Height", y = "Wr.Hnd") +
+  theme_minimal()
+# Miramos pearson y spearman
+cor_pearson_height_wr_hnd <- cor(datos_2026$Height, datos_2026$Wr.Hnd, method = "pearson", use = "complete.obs")
+cor_spearman_height_wr_hnd <- cor(datos_2026$Height, datos_2026$Wr.Hnd, method = "spearman", use = "complete.obs")
+cor_pearson_height_wr_hnd
+cor_spearman_height_wr_hnd
+```
 ## Outliers en altura (identificador de Hampel)
 
 ¿El identificador de Hampel detecta algún outlier en la variable altura?
-
+```{r}
+madm <- function(x, na.rm = TRUE) {
+  med <- median(x, na.rm = na.rm)
+  1.4826 * median(abs(x - med), na.rm = na.rm)
+}
+reglahampel <- function(x) {
+  med <- median(x, na.rm = TRUE)
+  m <- madm(x, na.rm = TRUE)
+  x < (med - 3 * m) | x > (med + 3 * m)
+}
+datos_2026 <- datos_2026 %>%
+  mutate(outlier_height = reglahampel(Height))
+outliers_height <- datos_2026 %>%
+  filter(outlier_height) %>%
+  select(Id, Height)
+outliers_height
+```
 ## Imputación generalizada de FP con la media
 
 Considera la asignatura FP. Si queremos realizar una imputación generalizada usando la media, ¿qué valor deberíamos utilizar?
-
+```{r}
+media_fp <- mean(datos_2026$FP, na.rm = TRUE)
+media_fp
+```
 ## Imputación de FP según PulseCat
 
 Define una nueva variable `PulseCat` a partir del ritmo cardíaco (`Pulse`), con dos valores: `PulseH` si `Pulse >= 65` y `PulseL` si `Pulse < 65`. ¿Qué valores utilizarías para imputar los valores faltantes de las notas de FP dependiendo del valor de `PulseCat` (imputación por casos similares)?
-
+```{r}
+datos_2026 <- datos_2026 %>%
+  mutate(PulseCat = ifelse(Pulse >= 65, "PulseH", "PulseL"))
+media_fp_pulseH <- mean(datos_2026$FP[datos_2026$PulseCat == "PulseH"], na.rm = TRUE)
+media_fp_pulseL <- mean(datos_2026$FP[datos_2026$PulseCat == "PulseL"], na.rm = TRUE)
+media_fp_pulseH
+media_fp_pulseL
+```
 ## Relación entre Pulse y calificaciones en ALG
 
-¿Qué podemos decir, como científicos de datos, ante la siguiente frase referida a nuestros datos?: *"El ritmo cardíaco está ligado con la cantidad de sangre que llega al cerebro, por tanto existirá una relación lineal directa entre esta variable y las calificaciones obtenidas en ALG"*.
+¿Qué podemos decir, como científicos de datos, ante la siguiente frase referida a nuestros datos?: *"El ritmo cardíaco está ligado con la cantidad de sangre que llega al cerebro, por tanto existirá una relación lineal directa entre esta variable y las calificaciones obtenidas en ALG"*. 
+```{r}
+ggplot(datos_2026, aes(x = Pulse, y = ALG)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(title = "Relación entre Pulse y ALG", x = "Pulse", y = "ALG") +
+  theme_minimal()
+cor_pearson_pulse_alg <- cor(datos_2026$Pulse, datos_2026$ALG, method = "pearson", use = "complete.obs")
+cor_spearman_pulse_alg <- cor(datos_2026$Pulse, datos_2026$ALG, method = "spearman", use = "complete.obs")
+cor_pearson_pulse_alg
+cor_spearman_pulse_alg
+```
