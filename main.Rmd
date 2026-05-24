@@ -1,0 +1,101 @@
+---
+title: "NosAnalizamos"
+author: "Tu Nombre"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+  pdf_document:
+    toc: true
+    number_sections: true
+---
+
+# Instalación y carga de librerías
+
+Asegúrate de que se instalan las librerías necesarias en caso de que no estén instaladas en el ordenador en el que se ejecuta el proyecto. Usa `pacman`.
+
+# Carga de datos
+
+Carga el fichero de datos en R y llama `datos` al data frame obtenido. Este data frame contendrá exclusivamente las columnas con variables y las filas que contengan datos. Se sabe que los datos empiezan en la fila 25, pero **no** se sabe cuántos alumnos puede haber, por lo que la selección de filas con datos debe ser **automática**.
+
+# Eliminar usuario martsobm
+
+Elimina al usuario cuyo id es `martsobm` del conjunto de datos.
+
+# Selección y limpieza de calificaciones
+
+Selecciona las columnas con las calificaciones y adécualas para que, al transformar a tipo numérico, los valores sean correctos (recuerda que el separador decimal es el punto). Si alguna calificación es `NC` se sustituirá por `3`. Cualquier otro valor no reconocible se sustituirá por `NA` (por ejemplo, `"6 y pico"` no es un valor conocido).
+
+# Tabla de estadísticos
+
+Obtén una tabla de estadísticos de estas variables, donde en la primera columna aparezca cada una de las asignaturas y las siguientes columnas se correspondan con los estadísticos indicados, en este orden: valor mínimo, percentil 25, mediana, valor medio, desviación típica, percentil 75, valor máximo. Los resultados se mostrarán con **2 decimales**.
+
+# ggpairs: relaciones entre variables
+
+Usa la función `ggpairs` de la librería `GGally` y representa las relaciones entre todas las variables.
+
+# Matrices de correlación y covarianza
+
+Determina las matrices de correlación y covarianza de dichas variables con las opciones `"Spearman"` y `"Pearson"`, e indica qué pares de variables tienen la correlación más alta.
+
+# Boxplots de calificaciones
+
+Representa en una misma gráfica los boxplots con las calificaciones obtenidas en las diferentes asignaturas.
+
+# Boxplots por sexo
+
+Añade la variable `sexo` al conjunto de datos y realiza la representación del boxplot de calificaciones por asignatura coloreando según dicha variable.
+
+# Alumnos con calificaciones en todas las asignaturas
+
+Selecciona los alumnos que tengan calificaciones en **todas** las asignaturas y represéntalas gráficamente. En el eje X aparecerá el usuario del alumno (girado 90°) y en el eje Y la calificación numérica, con un color distinto para cada asignatura. Se mostrará un diagrama de líneas que una las calificaciones de una misma asignatura para todos los alumnos, así como un punto por asignatura (del mismo color que las líneas) para cada asignatura y alumno.
+
+# Comparación 2022 vs 2026
+
+Sin hacer ninguna modificación en el código, utiliza el fichero correspondiente al año 2026 y compara los resultados con los del curso 2022.
+
+# Preguntas con datos 2026
+
+Responde a las siguientes preguntas utilizando los datos del curso 2026. Ten en cuenta que deberás hacer correcciones en los datos en aquellos casos en los que los valores introducidos contengan errores (por ejemplo, si los valores posibles para el sexo de nacimiento son `M` y `F`, cualquier otro valor deberá ser corregido; si la corrección no es posible, sustituye por `NA`). Debes justificar todas las cuestiones con los datos disponibles.
+
+## Alumno más joven a 01/02/2026
+
+¿Qué edad, expresada en años con decimales, tiene el alumno más joven a fecha 01/02/2026?
+
+## Alumnos que simultanean trabajo y estudios
+
+¿Cuántos alumnos simultanean trabajo y estudios?
+
+## Fumadores por sexo
+
+¿Hay más hombres o más mujeres fumadoras?
+
+## Media y varianza de Wr.Hnd según sexo
+
+¿Cuál es el valor medio y la varianza de la variable `Wr.Hnd` según el sexo?
+
+## Relación entre sexo y mano con la que se escribe
+
+¿Existe relación entre el sexo y la mano con la que se escribe (`NW.Hnd`)?
+
+## Relación lineal entre Height y Wr.Hnd
+
+¿Existe una relación lineal entre la altura (`Height`) y la distancia del extremo del meñique al extremo del pulgar de la mano con la que se escribe (`Wr.Hnd`)?
+
+## Outliers en altura (identificador de Hampel)
+
+¿El identificador de Hampel detecta algún outlier en la variable altura?
+
+## Imputación generalizada de FP con la media
+
+Considera la asignatura FP. Si queremos realizar una imputación generalizada usando la media, ¿qué valor deberíamos utilizar?
+
+## Imputación de FP según PulseCat
+
+Define una nueva variable `PulseCat` a partir del ritmo cardíaco (`Pulse`), con dos valores: `PulseH` si `Pulse >= 65` y `PulseL` si `Pulse < 65`. ¿Qué valores utilizarías para imputar los valores faltantes de las notas de FP dependiendo del valor de `PulseCat` (imputación por casos similares)?
+
+## Relación entre Pulse y calificaciones en ALG
+
+¿Qué podemos decir, como científicos de datos, ante la siguiente frase referida a nuestros datos?: *"El ritmo cardíaco está ligado con la cantidad de sangre que llega al cerebro, por tanto existirá una relación lineal directa entre esta variable y las calificaciones obtenidas en ALG"*.
