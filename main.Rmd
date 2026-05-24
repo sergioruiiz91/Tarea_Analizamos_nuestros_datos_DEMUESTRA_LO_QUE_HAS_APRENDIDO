@@ -110,6 +110,7 @@ print(cor_pearson)
 print(cor_spearman)
 print(cov_matrix)
 ```
+La correlación más alta (Pearson y Spearman) es entre `MD` y `ALG` (r≈0.80; ρ≈0.86).
 # Boxplots de calificaciones
 
 Representa en una misma gráfica los boxplots con las calificaciones obtenidas en las diferentes asignaturas.
@@ -313,6 +314,7 @@ ggplot(datos_long_2026, aes(x = Id, y = nota, color = asignatura, group = asigna
     color = "Asignatura"
   )
 ```
+En 2026 bajan las medias de ALG, ANM, FP y DCS respecto a 2022, mientras MD se mantiene prácticamente igual (≈6.12).
 
 # Preguntas con datos 2026
 Responde a las siguientes preguntas utilizando los datos del curso 2026. Ten en cuenta que deberás hacer correcciones en los datos en aquellos casos en los que los valores introducidos contengan errores (por ejemplo, si los valores posibles para el sexo de nacimiento son `M` y `F`, cualquier otro valor deberá ser corregido; si la corrección no es posible, sustituye por `NA`). Debes justificar todas las cuestiones con los datos disponibles.
@@ -366,6 +368,7 @@ datos_2026 <- datos_2026 %>%
 edad_mas_joven <- min(datos_2026$Edad_a_01_02_2026, na.rm = TRUE)
 edad_mas_joven
 ```
+El alumno más joven tiene aproximadamente 18.12 años.
 
 ## Alumnos que simultanean trabajo y estudios
 
@@ -377,6 +380,7 @@ alumnos_trabajo_estudios <- datos_2026 %>%
   nrow()
 alumnos_trabajo_estudios
 ```
+Simultan trabajo y estudios 14 alumnos.
 ## Fumadores por sexo
 
 ¿Hay más hombres o más mujeres fumadoras?
@@ -389,6 +393,7 @@ datos_fumadores <- datos_2026 %>%
   summarise(num_fumadores = n())
 datos_fumadores
 ``` 
+Hay más hombres: 7 hombres fumadores y 0 mujeres.
 ## Media y varianza de Wr.Hnd según sexo
 
 ¿Cuál es el valor medio y la varianza de la variable `Wr.Hnd` según el sexo?
@@ -404,9 +409,11 @@ datos_wr_hnd <- datos_2026 %>%
 
 datos_wr_hnd
 ```
+Mujeres: media 18.00, varianza 3.72; hombres: media 20.00, varianza 1.73.
 ## Relación entre sexo y mano con la que se escribe
 
 ¿Existe relación entre el sexo y la mano con la que se escribe (`NW.Hnd`)?
+No se observa relación clara: la mayoría son diestros en ambos sexos (F 22/2, M 29/7).
 
 ## Relación lineal entre Height y Wr.Hnd
 
@@ -423,6 +430,7 @@ cor_spearman_height_wr_hnd <- cor(datos_2026$Height, datos_2026$Wr.Hnd, method =
 cor_pearson_height_wr_hnd
 cor_spearman_height_wr_hnd
 ```
+Relación positiva moderada pero no fuerte (r≈0.43; ρ≈0.33).
 ## Outliers en altura (identificador de Hampel)
 
 ¿El identificador de Hampel detecta algún outlier en la variable altura?
@@ -443,6 +451,7 @@ outliers_height <- datos_2026 %>%
   select(Id, Height)
 outliers_height
 ```
+No, el identificador de Hampel no detecta outliers en altura (0 casos).
 ## Imputación generalizada de FP con la media
 
 Considera la asignatura FP. Si queremos realizar una imputación generalizada usando la media, ¿qué valor deberíamos utilizar?
@@ -450,6 +459,7 @@ Considera la asignatura FP. Si queremos realizar una imputación generalizada us
 media_fp <- mean(datos_2026$FP, na.rm = TRUE)
 media_fp
 ```
+Usaría la media global de FP: 4.40.
 ## Imputación de FP según PulseCat
 
 Define una nueva variable `PulseCat` a partir del ritmo cardíaco (`Pulse`), con dos valores: `PulseH` si `Pulse >= 65` y `PulseL` si `Pulse < 65`. ¿Qué valores utilizarías para imputar los valores faltantes de las notas de FP dependiendo del valor de `PulseCat` (imputación por casos similares)?
@@ -461,6 +471,7 @@ media_fp_pulseL <- mean(datos_2026$FP[datos_2026$PulseCat == "PulseL"], na.rm = 
 media_fp_pulseH
 media_fp_pulseL
 ```
+PulseH: 5.10; PulseL: 4.14.
 ## Relación entre Pulse y calificaciones en ALG
 
 ¿Qué podemos decir, como científicos de datos, ante la siguiente frase referida a nuestros datos?: *"El ritmo cardíaco está ligado con la cantidad de sangre que llega al cerebro, por tanto existirá una relación lineal directa entre esta variable y las calificaciones obtenidas en ALG"*. 
@@ -475,3 +486,4 @@ cor_spearman_pulse_alg <- cor(datos_2026$Pulse, datos_2026$ALG, method = "spearm
 cor_pearson_pulse_alg
 cor_spearman_pulse_alg
 ```
+No hay evidencia de relación lineal directa; las correlaciones son muy bajas (r≈0.14; ρ≈0.08).
